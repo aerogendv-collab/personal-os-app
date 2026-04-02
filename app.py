@@ -68,9 +68,13 @@ def guardar_datos(nombre_pestaña, nuevos_datos):
             worksheet = sheet.add_worksheet(title=nombre_pestaña, rows="1000", cols="20")
             worksheet.append_row(list(nuevos_datos.keys()))
         worksheet.append_row(list(nuevos_datos.values()))
+        # ¡NUEVO!: Borramos la memoria cuando guardamos algo nuevo para que se actualice
+        st.cache_data.clear() 
         return True
     return False
 
+# ¡NUEVO!: Le decimos a la app que memorice los datos durante 60 segundos
+@st.cache_data(ttl=60) 
 def cargar_datos(nombre_pestaña):
     if db_conectada:
         try:
@@ -86,6 +90,8 @@ def eliminar_registro(nombre_pestaña, indice_fila_sheet):
         try:
             worksheet = sheet.worksheet(nombre_pestaña)
             worksheet.delete_rows(indice_fila_sheet) 
+            # ¡NUEVO!: Borramos la memoria al borrar un dato para que desaparezca al instante
+            st.cache_data.clear() 
             return True
         except Exception as e:
             st.error(f"Error al borrar: {e}")

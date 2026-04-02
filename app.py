@@ -17,8 +17,8 @@ st.set_page_config(page_title="Personal OS", page_icon="🚀", layout="wide", in
 # --- CONFIGURACIÓN DE USUARIO (RELLENAR) ---
 # ==========================================
 
-FOLDER_ID_PHOTOS = "TU_ID_DE_CARPETA_DE_DRIVE_AQUÍ" 
-EMAIL_CALENDAR = "tu_email_real@gmail.com" 
+FOLDER_ID_PHOTOS = "1CbBY4x3sdvBk5q9WTPlvMtWcO2jObL5L" 
+EMAIL_CALENDAR = "aerogendv@gmail.com" 
 
 FONDOS = {
     "🏠 Inicio & Dashboard": "https://images.unsplash.com/photo-1451187580459-43490279c0fa",

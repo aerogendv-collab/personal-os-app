@@ -65,7 +65,7 @@ def cargar_datos(nombre_pestaña):
 # Conexión a Google Drive para fotos
 def subir_foto_a_drive(archivo_imagen, nombre_foto):
     """Sube una foto a la carpeta de Drive y devuelve el enlace."""
-    if FOLDER_ID_PHOTOS == "TU_ID_DE_CARPETA_DE_DRIVE_AQUÍ":
+    if FOLDER_ID_PHOTOS == "1CbBY4x3sdvBk5q9WTPlvMtWcO2jObL5L":
         st.error("⚠️ Falta configurar la ID de la carpeta de Drive.")
         return None
     

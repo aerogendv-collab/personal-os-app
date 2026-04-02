@@ -312,7 +312,7 @@ elif seccion == "📈 Hábitos":
             df_h['Semana'] = df_h['Fecha'].dt.isocalendar().week
             df_h['Día de la semana'] = df_h['Fecha'].dt.day_name()
             
-            chart = alt.Chart(df_h).mark_rect(rx=5, ry=5).encode(
+            chart = alt.Chart(df_h).mark_rect(cornerRadius=5).encode(
                 x=alt.X('Semana:O', axis=alt.Axis(title='Semanas', labels=False, ticks=False)),
                 y=alt.Y('Día de la semana:O', sort=['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'], title=None),
                 color=alt.Color('count()', scale=alt.Scale(scheme='greens'), legend=None),

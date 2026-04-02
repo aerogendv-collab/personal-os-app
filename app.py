@@ -277,7 +277,7 @@ elif seccion == "✨ Pareja/Escapadas":
             datos = {"Fecha Registro": fecha_hoy, "Lugar": lugar, "Fecha Escapada": fecha_escapada.strftime("%Y-%m-%d"), "Detalles": que_hicimos}
             guardar_datos("Pareja", datos)
             st.success(f"¡Recuerdo de {lugar} guardado!")
- elif seccion == "🗑️ Gestionar Datos":
+elif seccion == "🗑️ Gestionar Datos":
     st.title("🗑️ Eliminar Registros")
     st.write("Selecciona una categoría y el registro que deseas eliminar para siempre.")
     

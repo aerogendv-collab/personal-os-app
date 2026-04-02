@@ -16,7 +16,7 @@ st.set_page_config(page_title="Mi Personal OS", page_icon="🚀", layout="wide")
 # ==========================================
 
 # 1. PEGA AQUÍ LA ID DE TU CARPETA DE DRIVE
-FOLDER_ID_PHOTOS = "TU_ID_DE_CARPETA_DE_DRIVE_AQUÍ" 
+FOLDER_ID_PHOTOS = "1CbBY4x3sdvBk5q9WTPlvMtWcO2jObL5L" 
 
 @st.cache_resource
 def obtener_credenciales_gcp():

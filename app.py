@@ -2,51 +2,151 @@ import streamlit as st
 import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload
 import json
-from datetime import date
+import io
+from datetime import date, datetime
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Mi Personal OS", page_icon="🚀", layout="wide")
 
-# --- CONEXIÓN A LA BASE DE DATOS (GOOGLE SHEETS) ---
-@st.cache_resource
-def conectar_db():
-    scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-    # Lee las credenciales ocultas (secretos)
-    creds_dict = json.loads(st.secrets["gcp_service_account"])
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-    client = gspread.authorize(creds)
-    return client.open("Mi_Personal_OS")
+# ==========================================
+# --- CONFIGURACIÓN DE GOOGLE (PRO) ---
+# ==========================================
 
+# 1. PEGA AQUÍ LA ID DE TU CARPETA DE DRIVE
+FOLDER_ID_PHOTOS = "TU_ID_DE_CARPETA_DE_DRIVE_AQUÍ" 
+
+@st.cache_resource
+def obtener_credenciales_gcp():
+    """Lee y carga las credenciales secretas."""
+    creds_dict = json.loads(st.secrets["gcp_service_account"])
+    scope_sheets = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+    scope_drive = ['https://www.googleapis.com/auth/drive']
+    creds_sheets = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope_sheets)
+    creds_drive = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope_drive)
+    return creds_sheets, creds_drive
+
+creds_sheets, creds_drive = obtener_credenciales_gcp()
+
+# Conexión inteligente a Google Sheets
 try:
-    sheet = conectar_db()
+    client = gspread.authorize(creds_sheets)
+    sheet = client.open("Mi_Personal_OS")
     db_conectada = True
 except Exception as e:
-    st.error("⚠️ Esperando conexión a la Base de Datos...")
+    st.error(f"⚠️ Error de conexión a Base de Datos")
     db_conectada = False
 
-# Función inteligente para guardar datos
 def guardar_datos(nombre_pestaña, nuevos_datos):
+    """Guarda una fila de datos en una pestaña del Sheet."""
     if db_conectada:
         try:
             worksheet = sheet.worksheet(nombre_pestaña)
         except:
-            # Si la pestaña no existe en el Excel, la crea y pone los títulos
             worksheet = sheet.add_worksheet(title=nombre_pestaña, rows="1000", cols="20")
             worksheet.append_row(list(nuevos_datos.keys()))
-        
-        # Añade la nueva fila de datos
         worksheet.append_row(list(nuevos_datos.values()))
         return True
     return False
 
-# --- INTERFAZ DE LA APLICACIÓN ---
-st.sidebar.title("🚀 Mi Personal OS")
-seccion = st.sidebar.radio("Navegación:", ["🧠 Diario", "💪 Deporte", "🥗 Comidas"])
+def cargar_datos(nombre_pestaña):
+    """Carga los datos de una pestaña como un DataFrame de Pandas."""
+    if db_conectada:
+        try:
+            worksheet = sheet.worksheet(nombre_pestaña)
+            list_of_hashes = worksheet.get_all_records()
+            return pd.DataFrame(list_of_hashes)
+        except:
+            return pd.DataFrame()
+    return pd.DataFrame()
+
+# Conexión a Google Drive para fotos
+def subir_foto_a_drive(archivo_imagen, nombre_foto):
+    """Sube una foto a la carpeta de Drive y devuelve el enlace."""
+    if FOLDER_ID_PHOTOS == "TU_ID_DE_CARPETA_DE_DRIVE_AQUÍ":
+        st.error("⚠️ Falta configurar la ID de la carpeta de Drive.")
+        return None
+    
+    try:
+        service = build('drive', 'v3', credentials=creds_drive)
+        file_metadata = {
+            'name': nombre_foto,
+            'parents': [FOLDER_ID_PHOTOS]
+        }
+        # Convertimos la imagen de Streamlit a un formato que Drive entienda
+        media = MediaIoBaseUpload(io.BytesIO(archivo_imagen.getvalue()), mimetype='image/jpeg')
+        file = service.files().create(body=file_metadata, media_body=media, fields='id, webViewLink').execute()
+        
+        # Hacemos la foto pública con el enlace (para que la app la pueda leer)
+        service.permissions().create(fileId=file.get('id'), body={'type': 'anyone', 'role': 'reader'}).execute()
+        
+        # El webViewLink es el enlace para ver la foto en un navegador
+        return file.get('webViewLink')
+    except Exception as e:
+        st.error(f"❌ Error al subir la foto a Drive")
+        return None
+
+# ==========================================
+# --- INTERFAZ PRINCIPAL Y NAVEGACIÓN ---
+# ==========================================
 fecha_hoy = date.today().strftime("%Y-%m-%d")
 
-if seccion == "🧠 Diario":
-    st.title("🧠 Reflexión del Día")
+st.sidebar.title("🚀 Mi Personal OS")
+st.sidebar.markdown("Tu centro de control centralizado")
+seccion = st.sidebar.radio("Navegación:", 
+    ["📊 Dashboard", "🧠 Diario", "💪 Deporte", "🥗 Alimentación", "📚 Lectura", "💡 Ideas/Proyectos", "✈️ Viajes", "👔 Outfits", "✨ Pareja/Escapadas"]
+)
+
+# ==========================================
+# --- SECCIONES DE LA APLICACIÓN ---
+# ==========================================
+
+if seccion == "📊 Dashboard":
+    st.title("📊 Tu Resumen Visual")
+    st.write("Datos en tiempo real de tu Google Sheet.")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Mini dashboard de deporte
+        df_deporte = cargar_datos("Deporte")
+        if not df_deporte.empty:
+            st.subheader("Tu actividad física")
+            df_deporte['Minutos'] = pd.to_numeric(df_deporte['Minutos'])
+            st.write(f"Has registrado **{df_deporte.shape[0]}** entrenamientos.")
+            st.write(f"Tiempo total: **{df_deporte['Minutos'].sum()}** minutos.")
+            # Gráfico simple de barras por tipo
+            chart_data = df_deporte.groupby('Actividad')['Minutos'].sum()
+            st.bar_chart(chart_data)
+        else:
+            st.info("Aún no hay datos de deporte.")
+            
+    with col2:
+        # Mini dashboard de lectura
+        df_lectura = cargar_datos("Lectura")
+        if not df_lectura.empty:
+            st.subheader("Libros leídos o en proceso")
+            for i, row in df_lectura.iterrows():
+                estado = "📖 Leyendo" if not row['Fecha Fin'] or row['Fecha Fin'] == "" else "✅ Terminado"
+                st.write(f"- **{row['Título']}** ({estado})")
+        else:
+            st.info("Aún no hay datos de lectura.")
+    
+    st.divider()
+    
+    # Vista rápida del Diario
+    st.subheader("Últimas 5 reflexiones")
+    df_diario = cargar_datos("Diario")
+    if not df_diario.empty:
+        # Invertimos el orden para ver lo más nuevo primero
+        st.dataframe(df_diario.sort_values(by='Fecha', ascending=False).head(5), use_container_width=True)
+    else:
+        st.info("Diario vacío.")
+
+elif seccion == "🧠 Diario":
+    st.title("🧠 Diario y Reflexión")
     animo = st.select_slider("Energía de hoy:", ["Baja", "Media", "Alta", "Imparable"])
     pensamientos = st.text_area("¿Qué tienes en mente?")
     if st.button("Guardar en la nube"):
@@ -57,18 +157,113 @@ if seccion == "🧠 Diario":
 
 elif seccion == "💪 Deporte":
     st.title("💪 Registro Deportivo")
-    tipo = st.selectbox("Actividad:", ["Gimnasio", "Correr", "Yoga", "Pádel/Fútbol", "Otro"])
+    tipo = st.selectbox("Actividad:", ["Futbol", "Padel", "Correr", "Bici", "Gimnasio", "Otro"])
     duracion = st.number_input("Minutos:", min_value=1, value=45)
     if st.button("Registrar Entrenamiento"):
         datos = {"Fecha": fecha_hoy, "Actividad": tipo, "Minutos": str(duracion)}
         guardar_datos("Deporte", datos)
         st.success("¡Entrenamiento registrado!")
 
-elif seccion == "🥗 Comidas":
-    st.title("🥗 Control de Hábitos")
-    agua = st.number_input("Vasos de agua:", min_value=0, value=0)
-    sano = st.radio("¿Comiste sano?", ["Sí", "Más o menos", "No"])
-    if st.button("Guardar Hábitos"):
-        datos = {"Fecha": fecha_hoy, "Vasos Agua": str(agua), "Sano": sano}
-        guardar_datos("Comidas", datos)
-        st.success("¡Hábitos actualizados!")
+elif seccion == "🥗 Alimentación":
+    st.title("🥗 Control de Deslices")
+    alimento_insano = st.text_input("¿Qué comiste insano?")
+    alimento_sano_evitado = st.text_input("¿Qué alimento o bebida sana evitaste?")
+    if st.button("Registrar Deslice"):
+        if alimento_insano and alimento_sano_evitado:
+            datos = {"Fecha": fecha_hoy, "Comida Insana": alimento_insano, "Sano Evitado": alimento_sano_evitado}
+            guardar_datos("Alimentación", datos)
+            st.success("Deslice registrado. ¡A por la siguiente comida sana!")
+
+elif seccion == "📚 Lectura":
+    st.title("📚 Mi Biblioteca")
+    titulo = st.text_input("Título del libro:")
+    fecha_inicio = st.date_input("Fecha de inicio:")
+    fecha_fin = st.date_input("Fecha de fin (déjalo vacío si estás leyendo):", value=None)
+    
+    if st.button("Guardar Libro"):
+        if titulo:
+            f_fin_str = fecha_fin.strftime("%Y-%m-%d") if fecha_fin else ""
+            datos = {"Título": titulo, "Fecha Inicio": fecha_inicio.strftime("%Y-%m-%d"), "Fecha Fin": f_fin_str}
+            guardar_datos("Lectura", datos)
+            st.success("¡Libro guardado en tu historial!")
+
+elif seccion == "💡 Ideas/Proyectos":
+    st.title("💡 Lluvia de Ideas")
+    idea = st.text_input("Título de la idea/proyecto:")
+    descripcion = st.text_area("Descripción o primeros pasos:")
+    
+    if st.button("Capturar Idea"):
+        if idea:
+            datos = {"Fecha": fecha_hoy, "Idea/Proyecto": idea, "Descripción": descripcion}
+            guardar_datos("Ideas", datos)
+            st.success("¡Idea capturada! No la olvides.")
+
+elif seccion == "✈️ Viajes":
+    st.title("✈️ Bitácora de Viajes")
+    destino = st.text_input("Destino:")
+    periodo = st.text_input("Periodo (ej: 1-15 Agosto 2024):")
+    monumentos = st.text_area("Monumentos/sitios emblemáticos visitados:")
+    restaurantes = st.text_area("Restaurantes recomendados:")
+    
+    if st.button("Guardar Viaje"):
+        if destino:
+            datos = {"Fecha Registro": fecha_hoy, "Destino": destino, "Periodo": periodo, "Sitios Visitas": monumentos, "Comida": restaurantes}
+            guardar_datos("Viajes", datos)
+            st.success(f"¡Viaje a {destino} registrado!")
+
+elif seccion == "👔 Outfits":
+    st.title("👔 Gestor de Outfits")
+    
+    pestana_crear, pestana_ver = st.tabs(["🆕 Crear Outfit", "👕 Ver Historial"])
+    
+    with pestana_crear:
+        nombre_outfit = st.text_input("Nombre del conjunto (ej: 'Outfit Lunes casual', 'Outfit Boda'):")
+        foto_subida = st.file_uploader("Sube una foto del conjunto:", type=['jpg', 'jpeg', 'png'])
+        
+        if st.button("Subir Outfit"):
+            if nombre_outfit and foto_subida:
+                st.info("Subiendo foto a Drive... espera.")
+                # El truco: subimos la foto, obtenemos el enlace público
+                enlace_foto = subir_foto_a_drive(foto_subida, f"outfit_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg")
+                if enlace_foto:
+                    # Guardamos los datos CON EL ENLACE DE LA FOTO en el Excel
+                    datos = {"Fecha Creación": fecha_hoy, "Nombre Outfit": nombre_outfit, "Enlace Foto": enlace_foto, "Puestas": "0"}
+                    guardar_datos("Outfits", datos)
+                    st.success("¡Outfit guardado con éxito! Puedes verlo en la pestaña 'Ver Historial'")
+            else:
+                st.warning("Falta nombre o foto.")
+                
+    with pestana_ver:
+        st.subheader("Tus conjuntos")
+        df_outfits = cargar_datos("Outfits")
+        if not df_outfits.empty:
+            # Mostramos el DataFrame para que sea interactivo
+            st.dataframe(df_outfits[["Nombre Outfit", "Puestas", "Fecha Creación"]], use_container_width=True)
+            
+            # Buscador para ver la foto de un outfit específico
+            outfit_nombre_ver = st.selectbox("Selecciona un outfit para ver la foto:", df_outfits['Nombre Outfit'])
+            if outfit_nombre_ver:
+                # Buscamos el enlace en el DataFrame
+                fila_outfit = df_outfits[df_outfits['Nombre Outfit'] == outfit_nombre_ver].iloc[0]
+                enlace_ver = fila_outfit['Enlace Foto']
+                
+                # Streamlit no puede mostrar fotos de Drive directamente con st.image(enlace)
+                # Así que ponemos un botón que abre el enlace en una nueva pestaña.
+                st.link_button(f"Ver foto de '{outfit_nombre_ver}' en Google Drive", enlace_ver)
+                
+                # Para la parte de "actualizar las puestas", esto es complejo con Sheets directamente.
+                # Lo más fácil es abrir el Excel y cambiar el número a mano.
+        else:
+            st.info("Aún no tienes outfits guardados.")
+
+elif seccion == "✨ Pareja/Escapadas":
+    st.title("✨ Nuestras Escapadas")
+    lugar = st.text_input("Lugar de la escapada:")
+    fecha_escapada = st.date_input("Fecha:")
+    que_hicimos = st.text_area("¿Qué sitios chulos visitamos?")
+    
+    if st.button("Guardar Recuerdo"):
+        if lugar:
+            datos = {"Fecha Registro": fecha_hoy, "Lugar": lugar, "Fecha Escapada": fecha_escapada.strftime("%Y-%m-%d"), "Detalles": que_hicimos}
+            guardar_datos("Pareja", datos)
+            st.success(f"¡Recuerdo de {lugar} guardado!")

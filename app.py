@@ -6,16 +6,16 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 import json
 import io
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="Mi Personal OS", page_icon="🚀", layout="wide")
+# Añadimos initial_sidebar_state="collapsed" para que intente cerrarse/empezar cerrada
+st.set_page_config(page_title="Mi Personal OS", page_icon="🚀", layout="wide", initial_sidebar_state="collapsed")
 
 # ==========================================
-# --- CONFIGURACIÓN DE GOOGLE (PRO) ---
+# --- CONFIGURACIÓN DE GOOGLE ---
 # ==========================================
 
-# 1. PEGA AQUÍ LA ID DE TU CARPETA DE DRIVE
 FOLDER_ID_PHOTOS = "1CbBY4x3sdvBk5q9WTPlvMtWcO2jObL5L" 
 
 @st.cache_resource
@@ -85,58 +85,32 @@ def subir_foto_a_drive(archivo_imagen, nombre_foto):
         return None
 
 # ==========================================
+# --- FUNCIÓN REUTILIZABLE PARA HISTORIAL ---
+# ==========================================
+def mostrar_historial(nombre_pestaña):
+    """Crea un desplegable automático con el historial de la sección actual."""
+    with st.expander(f"📂 Ver mi historial de {nombre_pestaña}"):
+        df = cargar_datos(nombre_pestaña)
+        if not df.empty:
+            st.dataframe(df, use_container_width=True)
+        else:
+            st.info(f"Aún no tienes registros guardados en {nombre_pestaña}.")
+
+# ==========================================
 # --- INTERFAZ PRINCIPAL Y NAVEGACIÓN ---
 # ==========================================
 fecha_hoy = date.today().strftime("%Y-%m-%d")
 
 st.sidebar.title("🚀 Mi Personal OS")
-st.sidebar.markdown("Tu centro de control centralizado")
 seccion = st.sidebar.radio("Navegación:", 
-    ["📊 Dashboard", "🧠 Diario", "💪 Deporte", "🥗 Alimentación", "📚 Lectura", "💡 Ideas/Proyectos", "✈️ Viajes", "👔 Outfits", "✨ Pareja/Escapadas", "🗑️ Gestionar Datos"]
+    ["🧠 Diario", "💪 Deporte", "🥗 Alimentación", "📚 Lectura", "💡 Ideas/Proyectos", "✈️ Viajes", "👔 Outfits", "✨ Pareja/Escapadas", "📈 Hábitos", "💰 Finanzas", "🗑️ Gestionar Datos"]
 )
 
 # ==========================================
 # --- SECCIONES DE LA APLICACIÓN ---
 # ==========================================
 
-if seccion == "📊 Dashboard":
-    st.title("📊 Tu Resumen Visual")
-    st.write("Datos en tiempo real de tu Google Sheet.")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        df_deporte = cargar_datos("Deporte")
-        if not df_deporte.empty:
-            st.subheader("Tu actividad física")
-            df_deporte['Minutos'] = pd.to_numeric(df_deporte['Minutos'])
-            st.write(f"Has registrado **{df_deporte.shape[0]}** entrenamientos.")
-            st.write(f"Tiempo total: **{df_deporte['Minutos'].sum()}** minutos.")
-            chart_data = df_deporte.groupby('Actividad')['Minutos'].sum()
-            st.bar_chart(chart_data)
-        else:
-            st.info("Aún no hay datos de deporte.")
-            
-    with col2:
-        df_lectura = cargar_datos("Lectura")
-        if not df_lectura.empty:
-            st.subheader("Libros leídos o en proceso")
-            for i, row in df_lectura.iterrows():
-                estado = "📖 Leyendo" if not row['Fecha Fin'] or row['Fecha Fin'] == "" else "✅ Terminado"
-                st.write(f"- **{row['Título']}** ({estado})")
-        else:
-            st.info("Aún no hay datos de lectura.")
-    
-    st.divider()
-    
-    st.subheader("Últimas 5 reflexiones")
-    df_diario = cargar_datos("Diario")
-    if not df_diario.empty:
-        st.dataframe(df_diario.sort_values(by='Fecha', ascending=False).head(5), use_container_width=True)
-    else:
-        st.info("Diario vacío.")
-
-elif seccion == "🧠 Diario":
+if seccion == "🧠 Diario":
     st.title("🧠 Diario y Reflexión")
     animo = st.select_slider("Energía de hoy:", ["Baja", "Media", "Alta", "Imparable"])
     pensamientos = st.text_area("¿Qué tienes en mente?")
@@ -145,6 +119,7 @@ elif seccion == "🧠 Diario":
             datos = {"Fecha": fecha_hoy, "Ánimo": animo, "Pensamientos": pensamientos}
             guardar_datos("Diario", datos)
             st.success("¡Guardado en tu Google Drive!")
+    mostrar_historial("Diario")
 
 elif seccion == "💪 Deporte":
     st.title("💪 Registro Deportivo")
@@ -154,6 +129,7 @@ elif seccion == "💪 Deporte":
         datos = {"Fecha": fecha_hoy, "Actividad": tipo, "Minutos": str(duracion)}
         guardar_datos("Deporte", datos)
         st.success("¡Entrenamiento registrado!")
+    mostrar_historial("Deporte")
 
 elif seccion == "🥗 Alimentación":
     st.title("🥗 Control de Deslices")
@@ -164,19 +140,20 @@ elif seccion == "🥗 Alimentación":
             datos = {"Fecha": fecha_hoy, "Comida Insana": alimento_insano, "Sano Evitado": alimento_sano_evitado}
             guardar_datos("Alimentación", datos)
             st.success("Deslice registrado. ¡A por la siguiente comida sana!")
+    mostrar_historial("Alimentación")
 
 elif seccion == "📚 Lectura":
     st.title("📚 Mi Biblioteca")
     titulo = st.text_input("Título del libro:")
     fecha_inicio = st.date_input("Fecha de inicio:")
     fecha_fin = st.date_input("Fecha de fin (déjalo vacío si estás leyendo):", value=None)
-    
     if st.button("Guardar Libro"):
         if titulo:
             f_fin_str = fecha_fin.strftime("%Y-%m-%d") if fecha_fin else ""
             datos = {"Título": titulo, "Fecha Inicio": fecha_inicio.strftime("%Y-%m-%d"), "Fecha Fin": f_fin_str}
             guardar_datos("Lectura", datos)
             st.success("¡Libro guardado en tu historial!")
+    mostrar_historial("Lectura")
 
 elif seccion == "💡 Ideas/Proyectos":
     st.title("💡 Lluvia de Ideas")
@@ -187,6 +164,7 @@ elif seccion == "💡 Ideas/Proyectos":
             datos = {"Fecha": fecha_hoy, "Idea/Proyecto": idea, "Descripción": descripcion}
             guardar_datos("Ideas", datos)
             st.success("¡Idea capturada! No la olvides.")
+    mostrar_historial("Ideas")
 
 elif seccion == "✈️ Viajes":
     st.title("✈️ Bitácora de Viajes")
@@ -199,27 +177,25 @@ elif seccion == "✈️ Viajes":
             datos = {"Fecha Registro": fecha_hoy, "Destino": destino, "Periodo": periodo, "Sitios Visitas": monumentos, "Comida": restaurantes}
             guardar_datos("Viajes", datos)
             st.success(f"¡Viaje a {destino} registrado!")
+    mostrar_historial("Viajes")
 
 elif seccion == "👔 Outfits":
     st.title("👔 Gestor de Outfits")
-    pestana_crear, pestana_ver = st.tabs(["🆕 Crear Outfit", "👕 Ver Historial"])
     
-    with pestana_crear:
-        nombre_outfit = st.text_input("Nombre del conjunto (ej: 'Outfit Lunes casual', 'Outfit Boda'):")
-        foto_subida = st.file_uploader("Sube una foto del conjunto:", type=['jpg', 'jpeg', 'png'])
-        if st.button("Subir Outfit"):
-            if nombre_outfit and foto_subida:
-                st.info("Subiendo foto a Drive... espera.")
-                enlace_foto = subir_foto_a_drive(foto_subida, f"outfit_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg")
-                if enlace_foto:
-                    datos = {"Fecha Creación": fecha_hoy, "Nombre Outfit": nombre_outfit, "Enlace Foto": enlace_foto, "Puestas": "0"}
-                    guardar_datos("Outfits", datos)
-                    st.success("¡Outfit guardado con éxito! Puedes verlo en la pestaña 'Ver Historial'")
-            else:
-                st.warning("Falta nombre o foto.")
-                
-    with pestana_ver:
-        st.subheader("Tus conjuntos")
+    nombre_outfit = st.text_input("Nombre del conjunto (ej: 'Outfit Lunes casual'):")
+    foto_subida = st.file_uploader("Sube una foto del conjunto:", type=['jpg', 'jpeg', 'png'])
+    if st.button("Subir Outfit"):
+        if nombre_outfit and foto_subida:
+            st.info("Subiendo foto a Drive... espera.")
+            enlace_foto = subir_foto_a_drive(foto_subida, f"outfit_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg")
+            if enlace_foto:
+                datos = {"Fecha Creación": fecha_hoy, "Nombre Outfit": nombre_outfit, "Enlace Foto": enlace_foto, "Puestas": "0"}
+                guardar_datos("Outfits", datos)
+                st.success("¡Outfit guardado con éxito!")
+        else:
+            st.warning("Falta nombre o foto.")
+            
+    with st.expander("📂 Ver mi galería de Outfits"):
         df_outfits = cargar_datos("Outfits")
         if not df_outfits.empty:
             st.dataframe(df_outfits[["Nombre Outfit", "Puestas", "Fecha Creación"]], use_container_width=True)
@@ -241,31 +217,109 @@ elif seccion == "✨ Pareja/Escapadas":
             datos = {"Fecha Registro": fecha_hoy, "Lugar": lugar, "Fecha Escapada": fecha_escapada.strftime("%Y-%m-%d"), "Detalles": que_hicimos}
             guardar_datos("Pareja", datos)
             st.success(f"¡Recuerdo de {lugar} guardado!")
+    mostrar_historial("Pareja")
+
+elif seccion == "📈 Hábitos":
+    st.title("📈 Tracker de Hábitos")
+    
+    df_habitos = cargar_datos("Hábitos")
+    lista_habitos = []
+    if not df_habitos.empty and 'Hábito' in df_habitos.columns:
+        lista_habitos = df_habitos['Hábito'].unique().tolist()
+        
+    col1, col2 = st.columns(2)
+    with col1:
+        if lista_habitos:
+            habito_elegido = st.selectbox("Selecciona un hábito:", ["+ Crear Nuevo..."] + lista_habitos)
+            if habito_elegido == "+ Crear Nuevo...":
+                habito_elegido = st.text_input("Escribe el nuevo hábito (ej: Leer 10 págs):")
+        else:
+            habito_elegido = st.text_input("Crea tu primer hábito (ej: Beber 2L de agua):")
+            
+    with col2:
+        estado_habito = st.selectbox("Estado de hoy:", ["Cumplido ✅", "Fallado ❌"])
+        
+    if st.button("Registrar Hábito"):
+        if habito_elegido:
+            datos = {"Fecha": fecha_hoy, "Hábito": habito_elegido, "Estado": estado_habito}
+            guardar_datos("Hábitos", datos)
+            st.success("¡Hábito registrado!")
+            st.rerun()
+
+    st.divider()
+    st.subheader("🔥 Tus Rachas y Estadísticas")
+    
+    if not df_habitos.empty and 'Hábito' in df_habitos.columns:
+        # Lógica de cálculo de racha (días consecutivos)
+        for hab in lista_habitos:
+            df_h = df_habitos[df_habitos['Hábito'] == hab].copy()
+            df_h['Fecha'] = pd.to_datetime(df_h['Fecha']).dt.date
+            fechas_cumplidas = set(df_h[df_h['Estado'] == 'Cumplido ✅']['Fecha'])
+            fechas_registradas = set(df_h['Fecha'])
+            
+            racha_actual = 0
+            fecha_evaluar = date.today()
+            
+            # Si no lo hemos marcado hoy, empezamos a contar desde ayer
+            if fecha_evaluar not in fechas_registradas:
+                fecha_evaluar -= timedelta(days=1)
+                
+            while fecha_evaluar in fechas_cumplidas:
+                racha_actual += 1
+                fecha_evaluar -= timedelta(days=1)
+                
+            st.write(f"- **{hab}**: Racha activa de **{racha_actual}** días 🔥")
+
+        st.write("📊 **Progreso de los últimos 7 días**")
+        df_habitos['Fecha_Dt'] = pd.to_datetime(df_habitos['Fecha'])
+        hace_7_dias = pd.to_datetime(date.today() - timedelta(days=7))
+        df_ultimos = df_habitos[(df_habitos['Fecha_Dt'] >= hace_7_dias) & (df_habitos['Estado'] == 'Cumplido ✅')]
+        
+        if not df_ultimos.empty:
+            conteo = df_ultimos.groupby([df_ultimos['Fecha_Dt'].dt.strftime('%Y-%m-%d'), 'Hábito']).size().unstack(fill_value=0)
+            st.bar_chart(conteo)
+        else:
+            st.info("Aún no hay hábitos cumplidos en los últimos 7 días.")
+            
+    mostrar_historial("Hábitos")
+
+elif seccion == "💰 Finanzas":
+    st.title("💰 Control de Finanzas")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        tipo_movimiento = st.radio("Tipo de movimiento:", ["Gasto 📉", "Ingreso 📈"], horizontal=True)
+        cantidad = st.number_input("Cantidad (€):", min_value=0.0, step=1.0, format="%.2f")
+    with col2:
+        categoria = st.text_input("Etiqueta (ej: Comida, Sueldo, Ocio):")
+        concepto = st.text_input("Concepto / Detalles:")
+        
+    if st.button("Registrar Movimiento"):
+        if categoria and cantidad > 0:
+            datos = {"Fecha": fecha_hoy, "Tipo": tipo_movimiento, "Categoría": categoria, "Cantidad": str(cantidad), "Concepto": concepto}
+            guardar_datos("Finanzas", datos)
+            st.success("¡Movimiento financiero registrado!")
+            
+    mostrar_historial("Finanzas")
 
 elif seccion == "🗑️ Gestionar Datos":
     st.title("🗑️ Eliminar Registros")
     st.write("Selecciona una categoría y el registro que deseas eliminar para siempre.")
     
-    categorias = ["Diario", "Deporte", "Alimentación", "Lectura", "Ideas", "Viajes", "Outfits", "Pareja"]
+    categorias = ["Diario", "Deporte", "Alimentación", "Lectura", "Ideas", "Viajes", "Outfits", "Pareja", "Hábitos", "Finanzas"]
     categoria_seleccionada = st.selectbox("Selecciona la categoría:", categorias)
-    
     st.divider()
-    
     df = cargar_datos(categoria_seleccionada)
     
     if not df.empty:
         df['Fila_Excel'] = df.index + 2 
-        
         st.write("### Tus datos actuales:")
         st.dataframe(df, use_container_width=True)
         
         st.write("### Selecciona qué borrar")
         opciones_borrado = []
         for index, row in df.iterrows():
-            # ✔️ AQUÍ ESTÁ LA CORRECCIÓN: usamos .tolist()
             valores = row.tolist()
-            
-            # Nos aseguramos de que haya suficientes columnas para mostrar un resumen
             col1_val = valores[0] if len(valores) > 0 else ""
             col2_val = valores[1] if len(valores) > 1 else ""
             resumen = f"Fila {row['Fila_Excel']} ➔ {col1_val} | {col2_val}"
@@ -277,7 +331,7 @@ elif seccion == "🗑️ Gestionar Datos":
             fila_a_borrar = int(seleccion.split(" ")[1])
             st.warning(f"Borrando fila {fila_a_borrar} de la nube...")
             if eliminar_registro(categoria_seleccionada, fila_a_borrar):
-                st.success("¡Registro eliminado con éxito! Recarga la página o cambia de sección para ver tu base de datos limpia.")
+                st.success("¡Registro eliminado con éxito! Cambia de sección para ver tu base de datos limpia.")
             else:
                 st.error("Hubo un problema al intentar borrar el registro.")
     else:

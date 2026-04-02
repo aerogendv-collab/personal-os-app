@@ -262,7 +262,9 @@ elif seccion == "🗑️ Gestionar Datos":
         st.write("### Selecciona qué borrar")
         opciones_borrado = []
         for index, row in df.iterrows():
-            valores = list(row.values())
+            # ✔️ AQUÍ ESTÁ LA CORRECCIÓN: usamos .tolist()
+            valores = row.tolist()
+            
             # Nos aseguramos de que haya suficientes columnas para mostrar un resumen
             col1_val = valores[0] if len(valores) > 0 else ""
             col2_val = valores[1] if len(valores) > 1 else ""

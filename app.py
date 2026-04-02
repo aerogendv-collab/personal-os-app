@@ -62,7 +62,7 @@ def eliminar_registro(nombre_pestaña, indice_fila_sheet):
     if db_conectada:
         try:
             worksheet = sheet.worksheet(nombre_pestaña)
-            worksheet.delete_row(indice_fila_sheet) 
+            worksheet.delete_rows(indice_fila_sheet) 
             return True
         except Exception as e:
             st.error(f"Error al borrar: {e}")

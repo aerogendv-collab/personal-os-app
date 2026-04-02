@@ -61,7 +61,17 @@ def cargar_datos(nombre_pestaña):
         except:
             return pd.DataFrame()
     return pd.DataFrame()
-
+def eliminar_registro(nombre_pestaña, indice_fila_sheet):
+    """Elimina una fila específica en la pestaña de Google Sheets."""
+    if db_conectada:
+        try:
+            worksheet = sheet.worksheet(nombre_pestaña)
+            worksheet.delete_row(indice_fila_sheet) # gspread usa delete_row para borrar
+            return True
+        except Exception as e:
+            st.error(f"Error al borrar: {e}")
+            return False
+    return False
 # Conexión a Google Drive para fotos
 def subir_foto_a_drive(archivo_imagen, nombre_foto):
     """Sube una foto a la carpeta de Drive y devuelve el enlace."""
@@ -96,7 +106,8 @@ fecha_hoy = date.today().strftime("%Y-%m-%d")
 st.sidebar.title("🚀 Mi Personal OS")
 st.sidebar.markdown("Tu centro de control centralizado")
 seccion = st.sidebar.radio("Navegación:", 
-    ["📊 Dashboard", "🧠 Diario", "💪 Deporte", "🥗 Alimentación", "📚 Lectura", "💡 Ideas/Proyectos", "✈️ Viajes", "👔 Outfits", "✨ Pareja/Escapadas"]
+    ["📊 Dashboard", "🧠 Diario", "💪 Deporte", "🥗 Alimentación", "📚 Lectura", "💡 Ideas/Proyectos", "✈️ Viajes", "👔 Outfits", "✨ Pareja/Escapadas", "🗑️ Gestionar Datos"]
+)
 )
 
 # ==========================================
@@ -267,3 +278,50 @@ elif seccion == "✨ Pareja/Escapadas":
             datos = {"Fecha Registro": fecha_hoy, "Lugar": lugar, "Fecha Escapada": fecha_escapada.strftime("%Y-%m-%d"), "Detalles": que_hicimos}
             guardar_datos("Pareja", datos)
             st.success(f"¡Recuerdo de {lugar} guardado!")
+ elif seccion == "🗑️ Gestionar Datos":
+    st.title("🗑️ Eliminar Registros")
+    st.write("Selecciona una categoría y el registro que deseas eliminar para siempre.")
+    
+    # 1. Elegir de dónde queremos borrar
+    categorias = ["Diario", "Deporte", "Alimentación", "Lectura", "Ideas", "Viajes", "Outfits", "Pareja"]
+    categoria_seleccionada = st.selectbox("Selecciona la categoría:", categorias)
+    
+    st.divider()
+    
+    # 2. Cargar y mostrar los datos
+    df = cargar_datos(categoria_seleccionada)
+    
+    if not df.empty:
+        # TRUCO: Calculamos el número de fila real en tu Google Sheets
+        # En Pandas la primera fila es la 0. En Excel, la 1 es el título, así que los datos empiezan en la 2.
+        # Por tanto: Fila de Excel = Índice de Pandas + 2
+        df['Fila_Excel'] = df.index + 2 
+        
+        st.write("### Tus datos actuales:")
+        # Mostramos la tabla para que puedas revisar qué hay
+        st.dataframe(df, use_container_width=True)
+        
+        st.write("### Selecciona qué borrar")
+        # Creamos una lista legible para el menú desplegable
+        opciones_borrado = []
+        for index, row in df.iterrows():
+            # Extraemos los dos primeros datos para que sepas qué estás borrando (ej. Fecha y Título)
+            valores = list(row.values())
+            resumen = f"Fila {row['Fila_Excel']} ➔ {valores[0]} | {valores[1]}"
+            opciones_borrado.append(resumen)
+            
+        seleccion = st.selectbox("Elige el registro a eliminar:", opciones_borrado)
+        
+        # 3. El botón peligroso
+        if st.button("🚨 Eliminar Registro Definitivamente"):
+            # Extraemos el número de fila del texto seleccionado
+            # Si el texto es "Fila 3 ➔ 2024-04-02 | Correr", sacamos el "3"
+            fila_a_borrar = int(seleccion.split(" ")[1])
+            
+            st.warning(f"Borrando fila {fila_a_borrar} de la nube...")
+            if eliminar_registro(categoria_seleccionada, fila_a_borrar):
+                st.success("¡Registro eliminado con éxito! Recarga la página o cambia de sección para ver tu base de datos limpia.")
+            else:
+                st.error("Hubo un problema al intentar borrar el registro.")
+    else:
+        st.info("Aún no tienes registros guardados en esta categoría.")           

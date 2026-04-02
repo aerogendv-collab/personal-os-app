@@ -7,34 +7,57 @@ from googleapiclient.http import MediaIoBaseUpload
 import json
 import io
 from datetime import date, datetime, timedelta
+import altair as alt
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-# Añadimos initial_sidebar_state="collapsed" para que intente cerrarse/empezar cerrada
 st.set_page_config(page_title="Mi Personal OS", page_icon="🚀", layout="wide", initial_sidebar_state="collapsed")
+
+# ==========================================
+# --- CONFIGURACIÓN DE USUARIO (RELLENAR) ---
+# ==========================================
+
+FOLDER_ID_PHOTOS = "1CbBY4x3sdvBk5q9WTPlvMtWcO2jObL5L" 
+EMAIL_CALENDAR = "aeroegen@gmail.com" # 👈 TU EMAIL DE GOOGLE CALENDAR AQUÍ
+
+# Enlaces a fotos de fondo para cada sección (puedes buscar fotos en Unsplash y cambiar los enlaces)
+FONDOS = {
+    "🧠 Diario": "https://images.unsplash.com/photo-1517816743773-6e0fd5ce9464",
+    "💪 Deporte": "https://images.unsplash.com/photo-1517836357463-d25dfeac3438",
+    "🥗 Alimentación": "https://images.unsplash.com/photo-1490645935967-10de6ba17061",
+    "📚 Lectura": "https://images.unsplash.com/photo-1524995997946-a1c2e315a42f",
+    "💡 Ideas/Proyectos": "https://images.unsplash.com/photo-1493612276216-ee3925520721",
+    "✈️ Viajes": "https://images.unsplash.com/photo-1436491865332-7a61a109cc05",
+    "👔 Outfits": "https://images.unsplash.com/photo-1489987707023-afcb1e97d19c",
+    "✨ Pareja/Escapadas": "https://images.unsplash.com/photo-1518199266791-5375a83190b7",
+    "📈 Hábitos": "https://images.unsplash.com/photo-1484480974693-6ca0a78fb36b",
+    "💰 Finanzas": "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c",
+    "📅 Recordatorios": "https://images.unsplash.com/photo-1506784983877-45594efa4cbe",
+    "Default": "https://images.unsplash.com/photo-1507525428034-b723cf961d3e"
+}
 
 # ==========================================
 # --- CONFIGURACIÓN DE GOOGLE ---
 # ==========================================
 
-FOLDER_ID_PHOTOS = "1CbBY4x3sdvBk5q9WTPlvMtWcO2jObL5L" 
-
 @st.cache_resource
 def obtener_credenciales_gcp():
     creds_dict = json.loads(st.secrets["gcp_service_account"])
-    scope_sheets = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-    scope_drive = ['https://www.googleapis.com/auth/drive']
-    creds_sheets = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope_sheets)
-    creds_drive = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope_drive)
-    return creds_sheets, creds_drive
+    scopes = [
+        'https://spreadsheets.google.com/feeds', 
+        'https://www.googleapis.com/auth/drive',
+        'https://www.googleapis.com/auth/calendar'
+    ]
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scopes)
+    return creds
 
-creds_sheets, creds_drive = obtener_credenciales_gcp()
+creds = obtener_credenciales_gcp()
 
 try:
-    client = gspread.authorize(creds_sheets)
+    client = gspread.authorize(creds)
     sheet = client.open("Mi_Personal_OS")
     db_conectada = True
 except Exception as e:
-    st.error(f"⚠️ Error de conexión a Base de Datos")
+    st.error(f"⚠️ Error de conexión a Base de Datos: {e}")
     db_conectada = False
 
 def guardar_datos(nombre_pestaña, nuevos_datos):
@@ -74,21 +97,50 @@ def subir_foto_a_drive(archivo_imagen, nombre_foto):
         st.error("⚠️ Falta configurar la ID de la carpeta de Drive.")
         return None
     try:
-        service = build('drive', 'v3', credentials=creds_drive)
+        service = build('drive', 'v3', credentials=creds)
         file_metadata = {'name': nombre_foto, 'parents': [FOLDER_ID_PHOTOS]}
         media = MediaIoBaseUpload(io.BytesIO(archivo_imagen.getvalue()), mimetype='image/jpeg')
         file = service.files().create(body=file_metadata, media_body=media, fields='id, webViewLink').execute()
         service.permissions().create(fileId=file.get('id'), body={'type': 'anyone', 'role': 'reader'}).execute()
         return file.get('webViewLink')
     except Exception as e:
-        st.error(f"❌ Error al subir la foto a Drive")
+        st.error(f"❌ Error al subir la foto a Drive: {e}")
         return None
 
-# ==========================================
-# --- FUNCIÓN REUTILIZABLE PARA HISTORIAL ---
-# ==========================================
+def crear_evento_calendar(titulo, fecha, descripcion=""):
+    try:
+        service = build('calendar', 'v3', credentials=creds)
+        evento = {
+            'summary': titulo,
+            'description': descripcion,
+            'start': {'date': fecha.strftime("%Y-%m-%d")},
+            'end': {'date': fecha.strftime("%Y-%m-%d")}, 
+        }
+        evento_creado = service.events().insert(calendarId=EMAIL_CALENDAR, body=evento).execute()
+        return evento_creado.get('htmlLink')
+    except Exception as e:
+        st.error(f"Error conectando con Google Calendar. ¿Compartiste el calendario con el robot? Error: {e}")
+        return None
+
+def establecer_fondo(seccion_actual):
+    url_imagen = FONDOS.get(seccion_actual, FONDOS["Default"])
+    css = f"""
+    <style>
+    .stApp {{
+        background-image: linear-gradient(rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0.75)), url("{url_imagen}");
+        background-size: cover;
+        background-position: center;
+        background-attachment: fixed;
+    }}
+    /* Asegurar que el texto sea blanco para contrastar con el fondo oscuro */
+    .stMarkdown, .stText, h1, h2, h3 {{
+        color: white !important;
+    }}
+    </style>
+    """
+    st.markdown(css, unsafe_allow_html=True)
+
 def mostrar_historial(nombre_pestaña):
-    """Crea un desplegable automático con el historial de la sección actual."""
     with st.expander(f"📂 Ver mi historial de {nombre_pestaña}"):
         df = cargar_datos(nombre_pestaña)
         if not df.empty:
@@ -102,9 +154,11 @@ def mostrar_historial(nombre_pestaña):
 fecha_hoy = date.today().strftime("%Y-%m-%d")
 
 st.sidebar.title("🚀 Mi Personal OS")
-seccion = st.sidebar.radio("Navegación:", 
-    ["🧠 Diario", "💪 Deporte", "🥗 Alimentación", "📚 Lectura", "💡 Ideas/Proyectos", "✈️ Viajes", "👔 Outfits", "✨ Pareja/Escapadas", "📈 Hábitos", "💰 Finanzas", "🗑️ Gestionar Datos"]
-)
+secciones = ["🧠 Diario", "💪 Deporte", "🥗 Alimentación", "📚 Lectura", "💡 Ideas/Proyectos", "✈️ Viajes", "👔 Outfits", "✨ Pareja/Escapadas", "📈 Hábitos", "💰 Finanzas", "📅 Recordatorios", "🗑️ Gestionar Datos"]
+seccion = st.sidebar.radio("Navegación:", secciones)
+
+# Aplicar el fondo dinámico
+establecer_fondo(seccion)
 
 # ==========================================
 # --- SECCIONES DE LA APLICACIÓN ---
@@ -181,7 +235,6 @@ elif seccion == "✈️ Viajes":
 
 elif seccion == "👔 Outfits":
     st.title("👔 Gestor de Outfits")
-    
     nombre_outfit = st.text_input("Nombre del conjunto (ej: 'Outfit Lunes casual'):")
     foto_subida = st.file_uploader("Sube una foto del conjunto:", type=['jpg', 'jpeg', 'png'])
     if st.button("Subir Outfit"):
@@ -238,54 +291,47 @@ elif seccion == "📈 Hábitos":
             
     with col2:
         estado_habito = st.selectbox("Estado de hoy:", ["Cumplido ✅", "Fallado ❌"])
+        fecha_habito = st.date_input("Fecha de registro:", value=date.today())
         
     if st.button("Registrar Hábito"):
         if habito_elegido:
-            datos = {"Fecha": fecha_hoy, "Hábito": habito_elegido, "Estado": estado_habito}
+            datos = {"Fecha": fecha_habito.strftime("%Y-%m-%d"), "Hábito": habito_elegido, "Estado": estado_habito}
             guardar_datos("Hábitos", datos)
             st.success("¡Hábito registrado!")
             st.rerun()
 
     st.divider()
-    st.subheader("🔥 Tus Rachas y Estadísticas")
+    st.subheader("🔥 Calendario de Cumplimiento")
     
     if not df_habitos.empty and 'Hábito' in df_habitos.columns:
-        # Lógica de cálculo de racha (días consecutivos)
-        for hab in lista_habitos:
-            df_h = df_habitos[df_habitos['Hábito'] == hab].copy()
-            df_h['Fecha'] = pd.to_datetime(df_h['Fecha']).dt.date
-            fechas_cumplidas = set(df_h[df_h['Estado'] == 'Cumplido ✅']['Fecha'])
-            fechas_registradas = set(df_h['Fecha'])
-            
-            racha_actual = 0
-            fecha_evaluar = date.today()
-            
-            # Si no lo hemos marcado hoy, empezamos a contar desde ayer
-            if fecha_evaluar not in fechas_registradas:
-                fecha_evaluar -= timedelta(days=1)
-                
-            while fecha_evaluar in fechas_cumplidas:
-                racha_actual += 1
-                fecha_evaluar -= timedelta(days=1)
-                
-            st.write(f"- **{hab}**: Racha activa de **{racha_actual}** días 🔥")
-
-        st.write("📊 **Progreso de los últimos 7 días**")
-        df_habitos['Fecha_Dt'] = pd.to_datetime(df_habitos['Fecha'])
-        hace_7_dias = pd.to_datetime(date.today() - timedelta(days=7))
-        df_ultimos = df_habitos[(df_habitos['Fecha_Dt'] >= hace_7_dias) & (df_habitos['Estado'] == 'Cumplido ✅')]
+        hab_ver = st.selectbox("Selecciona el hábito para ver su calendario:", lista_habitos)
+        df_h = df_habitos[(df_habitos['Hábito'] == hab_ver) & (df_habitos['Estado'] == 'Cumplido ✅')].copy()
         
-        if not df_ultimos.empty:
-            conteo = df_ultimos.groupby([df_ultimos['Fecha_Dt'].dt.strftime('%Y-%m-%d'), 'Hábito']).size().unstack(fill_value=0)
-            st.bar_chart(conteo)
+        if not df_h.empty:
+            df_h['Fecha'] = pd.to_datetime(df_h['Fecha'])
+            df_h['Semana'] = df_h['Fecha'].dt.isocalendar().week
+            df_h['Día de la semana'] = df_h['Fecha'].dt.day_name()
+            
+            chart = alt.Chart(df_h).mark_rect(rx=5, ry=5).encode(
+                x=alt.X('Semana:O', axis=alt.Axis(title='Semanas', labels=False, ticks=False)),
+                y=alt.Y('Día de la semana:O', sort=['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'], title=None),
+                color=alt.Color('count()', scale=alt.Scale(scheme='greens'), legend=None),
+                tooltip=['Fecha', 'Hábito']
+            ).properties(
+                width='container',
+                height=250,
+                title=f"Historial de: {hab_ver}"
+            ).configure_view(strokeWidth=0)
+            
+            st.altair_chart(chart, use_container_width=True)
+            st.write(f"Has cumplido este hábito **{len(df_h)}** veces en total.")
         else:
-            st.info("Aún no hay hábitos cumplidos en los últimos 7 días.")
+            st.info("No hay días marcados como 'Cumplido' para este hábito todavía.")
             
     mostrar_historial("Hábitos")
 
 elif seccion == "💰 Finanzas":
     st.title("💰 Control de Finanzas")
-    
     col1, col2 = st.columns(2)
     with col1:
         tipo_movimiento = st.radio("Tipo de movimiento:", ["Gasto 📉", "Ingreso 📈"], horizontal=True)
@@ -302,11 +348,35 @@ elif seccion == "💰 Finanzas":
             
     mostrar_historial("Finanzas")
 
+elif seccion == "📅 Recordatorios":
+    st.title("📅 Enviar a Google Calendar")
+    st.write("Crea un evento o recordatorio que aparecerá automáticamente en tu agenda personal.")
+    
+    tit_rec = st.text_input("Título del evento/recordatorio:")
+    fecha_rec = st.date_input("¿Para qué día es?")
+    desc_rec = st.text_area("Detalles o notas adicionales:")
+    
+    if st.button("Añadir a mi Calendario"):
+        if tit_rec:
+            if EMAIL_CALENDAR == "tu_email_real@gmail.com":
+                st.error("⚠️ Primero debes poner tu email en la línea 20 del código para que sepa a qué calendario mandarlo.")
+            else:
+                st.info("Conectando con Google Calendar...")
+                enlace = crear_evento_calendar(tit_rec, fecha_rec, desc_rec)
+                if enlace:
+                    guardar_datos("Recordatorios", {"Fecha Creación": fecha_hoy, "Fecha Evento": fecha_rec.strftime("%Y-%m-%d"), "Título": tit_rec})
+                    st.success("✅ ¡Añadido a tu Google Calendar exitosamente!")
+                    st.link_button("Ver en Google Calendar", enlace)
+        else:
+            st.warning("Debes ponerle un título al recordatorio.")
+            
+    mostrar_historial("Recordatorios")
+
 elif seccion == "🗑️ Gestionar Datos":
     st.title("🗑️ Eliminar Registros")
     st.write("Selecciona una categoría y el registro que deseas eliminar para siempre.")
     
-    categorias = ["Diario", "Deporte", "Alimentación", "Lectura", "Ideas", "Viajes", "Outfits", "Pareja", "Hábitos", "Finanzas"]
+    categorias = ["Diario", "Deporte", "Alimentación", "Lectura", "Ideas", "Viajes", "Outfits", "Pareja", "Hábitos", "Finanzas", "Recordatorios"]
     categoria_seleccionada = st.selectbox("Selecciona la categoría:", categorias)
     st.divider()
     df = cargar_datos(categoria_seleccionada)

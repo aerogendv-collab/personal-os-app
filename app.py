@@ -108,7 +108,6 @@ st.sidebar.markdown("Tu centro de control centralizado")
 seccion = st.sidebar.radio("Navegación:", 
     ["📊 Dashboard", "🧠 Diario", "💪 Deporte", "🥗 Alimentación", "📚 Lectura", "💡 Ideas/Proyectos", "✈️ Viajes", "👔 Outfits", "✨ Pareja/Escapadas", "🗑️ Gestionar Datos"]
 )
-)
 
 # ==========================================
 # --- SECCIONES DE LA APLICACIÓN ---
